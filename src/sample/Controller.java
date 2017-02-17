@@ -1,6 +1,7 @@
 package sample;
 
 import javafx.concurrent.Worker;
+import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.Node;
@@ -13,9 +14,11 @@ import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 
 import java.net.URL;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ResourceBundle;
+
+import static sample.helpers.TimeHelper.changeTimeLabelInterval;
+import static sample.helpers.TimeHelper.getActualTime;
+import static sample.helpers.URIHelper.getParsedURI;
 
 public class Controller implements Initializable {
 
@@ -53,6 +56,8 @@ public class Controller implements Initializable {
         engine.load("http://www.google.com");
 
         timeLabel.setText(getActualTime());
+        changeTimeLabelInterval(1, timeLabel);
+
         addressLabel.setText(engine.getLocation());
 
         loadProgress.progressProperty().bind(engine.getLoadWorker().progressProperty());
@@ -68,24 +73,45 @@ public class Controller implements Initializable {
         rootItem.setExpanded(true);
 
         historyTree.setRoot(rootItem);
+        addToggleButtonsListener(node);
+        addWebEngineListener(rootItem);
+        addHistoryTreeListener();
+        addressField.setOnKeyPressed(this::loadPageEvent);
+    }
 
-        toggleButtonsListener(node);
+    private void addHistoryTreeListener() {
+        historyTree.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
+            TreeItem<String> selectedItem = (TreeItem<String>) newValue;
+            addressField.setText(selectedItem.getValue());
+        });
+    }
 
+    private void addWebEngineListener(TreeItem treeItem) {
         engine.getLoadWorker().stateProperty().addListener(
                 (observable, oldValue, newValue) -> {
+                    if (newValue == Worker.State.RUNNING) {
+                        loadProgress.setVisible(true);
+                        addressLabel.setText("Loading ... " + engine.getLocation());
+                        TreeItem<String> newHistoryItem = new TreeItem<>(engine.getLocation());
+                        treeItem.getChildren().add(newHistoryItem);
+                    }
                     if (newValue == Worker.State.SUCCEEDED) {
                         tabs.getTabs().get(tabs.getSelectionModel().getSelectedIndex()).setText(engine.getTitle());
-                        TreeItem<String> newHistoryItem = new TreeItem<>(engine.getLocation());
-                        rootItem.getChildren().add(newHistoryItem);
+                        loadProgress.setVisible(false);
+                        addressLabel.setText(engine.getTitle());
                     }
                 });
     }
 
     @FXML
-    private void loadPage(KeyEvent event) {
+    private void loadPageEvent(KeyEvent event) {
         if (event.getCode() == KeyCode.ENTER) {
-            engine.load(addressField.getText());
+            loadPage(addressField.getText());
         }
+    }
+
+    private void loadPage(String address) {
+        engine.load(getParsedURI(address));
     }
 
     @FXML
@@ -93,7 +119,14 @@ public class Controller implements Initializable {
         engine.reload();
     }
 
-    private void toggleButtonsListener(Node node) {
+    @FXML
+    public void goToPage() {
+        if (!addressField.getText().isEmpty()) {
+            loadPage(addressField.getText());
+        }
+    }
+
+    private void addToggleButtonsListener(Node node) {
         bookmarkToggleGroup.selectedToggleProperty().addListener(
                 (observable, oldValue, newValue) -> {
                     if (bookmarkOn.isSelected()) {
@@ -103,12 +136,4 @@ public class Controller implements Initializable {
                     }
                 });
     }
-
-    private String getActualTime() {
-        LocalTime time = LocalTime.now();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm");
-        LocalTime parsedTime = LocalTime.parse(time.format(formatter), formatter);
-        return parsedTime.toString();
-    }
-
 }
